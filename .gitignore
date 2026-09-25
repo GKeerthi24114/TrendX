@@ -1,0 +1,39 @@
+@"
+__pycache__/
+*.pyc
+.venv/
+venv/
+.env
+*.log
+.DS_Store
+
+# Large dataset files
+dataset/*.csv
+dataset/*.pt
+dataset/*.npy
+
+# Generated outputs
+outputs/
+
+# Trained models
+models/
+"@ | Out-File -Encoding utf8 .gitignore
+
+# Python
+__pycache__/
+*.pyc
+.venv/
+venv/
+.env
+
+# Dataset
+dataset/images/
+dataset/*.csv
+dataset/*.pt
+dataset/*.npy
+
+# Generated files
+outputs/
+
+# Trained models
+models/
