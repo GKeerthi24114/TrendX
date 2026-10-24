@@ -35,11 +35,19 @@ class ModelPipeline:
       2. Random Forest Classifier (Balanced Class Weights)
       3. XGBoost Classifier (Sample Weighted)
     """
-    def __init__(self, data_path=r"d:\DS PROJECT\outputs\ml_dataset.csv", output_dir=r"d:\DS PROJECT\outputs"):
+    def __init__(self, data_path=None, output_dir=None, models_dir=None):
+        base_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+        if output_dir is None:
+            output_dir = os.path.join(base_dir, "outputs")
+        if data_path is None:
+            data_path = os.path.join(output_dir, "ml_dataset.csv")
+        if models_dir is None:
+            models_dir = os.path.join(base_dir, "models")
+
         self.data_path = data_path
         self.output_dir = output_dir
         self.plots_dir = os.path.join(output_dir, "plots", "model_evaluation")
-        self.models_dir = r"d:\DS PROJECT\models"
+        self.models_dir = models_dir
         
         os.makedirs(self.output_dir, exist_ok=True)
         os.makedirs(self.plots_dir, exist_ok=True)
@@ -61,12 +69,16 @@ class ModelPipeline:
         self.target_col = 'target'
         self.class_names = ['Stable', 'Emerging Trend', 'Strong Trend']
 
-    def load_and_split_data(self):
+    def load_and_split_data(self, purge_window=4):
         """
-        Loads ml_dataset.csv and performs chronological time-aware split:
-          - 70% earliest dates -> Train Set
-          - 15% following dates -> Validation Set
-          - 15% latest dates   -> Holdout Test Set
+        Loads ml_dataset.csv and performs chronological time-aware split
+        with a 4-week lookahead purge window (embargo) at partition boundaries:
+          - 70% earliest dates (minus 4 trailing weeks) -> Train Set
+          - 15% following dates (minus 4 trailing weeks) -> Validation Set
+          - 15% latest dates                            -> Holdout Test Set (Untouched)
+        
+        The 4-week purge prevents target labels calculated with future data (t+1..t+4)
+        from leaking into subsequent evaluation partitions.
         """
         df = pd.read_csv(self.data_path)
         df['date'] = pd.to_datetime(df['date'])
@@ -80,9 +92,13 @@ class ModelPipeline:
         train_end_idx = int(0.70 * n_dates)
         val_end_idx = int(0.85 * n_dates)
 
-        train_dates = unique_dates[:train_end_idx]
-        val_dates = unique_dates[train_end_idx:val_end_idx]
-        test_dates = unique_dates[val_end_idx:]
+        # Apply 4-week purge before validation and test partitions
+        train_dates = unique_dates[: max(0, train_end_idx - purge_window)]
+        val_dates = unique_dates[train_end_idx : max(train_end_idx, val_end_idx - purge_window)]
+        test_dates = unique_dates[val_end_idx :]
+
+        purged_train_dates = unique_dates[train_end_idx - purge_window : train_end_idx]
+        purged_val_dates = unique_dates[val_end_idx - purge_window : val_end_idx]
 
         train_mask = df['date'].isin(train_dates)
         val_mask = df['date'].isin(val_dates)
@@ -110,10 +126,29 @@ class ModelPipeline:
         # Save scaler object
         joblib.dump(self.scaler, os.path.join(self.models_dir, "scaler.joblib"))
 
-        print("Data Split Summary:")
-        print(f" -> Train Dates: {pd.to_datetime(train_dates[0]).strftime('%Y-%m-%d')} to {pd.to_datetime(train_dates[-1]).strftime('%Y-%m-%d')} ({len(self.df_train)} rows)")
-        print(f" -> Val Dates  : {pd.to_datetime(val_dates[0]).strftime('%Y-%m-%d')} to {pd.to_datetime(val_dates[-1]).strftime('%Y-%m-%d')} ({len(self.df_val)} rows)")
-        print(f" -> Test Dates : {pd.to_datetime(test_dates[0]).strftime('%Y-%m-%d')} to {pd.to_datetime(test_dates[-1]).strftime('%Y-%m-%d')} ({len(self.df_test)} rows)")
+        print("Data Split Summary (with 4-week lookahead purge embargo):")
+        print(f" -> Train Dates: {pd.to_datetime(train_dates[0]).strftime('%Y-%m-%d')} to {pd.to_datetime(train_dates[-1]).strftime('%Y-%m-%d')} ({len(self.df_train)} rows across {len(train_dates)} weeks)")
+        print(f"    [Purged Train->Val Embargo: {len(purged_train_dates)} weeks ({len(purged_train_dates)*len(df['trend_name'].unique())} rows dropped)]")
+        print(f" -> Val Dates  : {pd.to_datetime(val_dates[0]).strftime('%Y-%m-%d')} to {pd.to_datetime(val_dates[-1]).strftime('%Y-%m-%d')} ({len(self.df_val)} rows across {len(val_dates)} weeks)")
+        print(f"    [Purged Val->Test Embargo: {len(purged_val_dates)} weeks ({len(purged_val_dates)*len(df['trend_name'].unique())} rows dropped)]")
+        print(f" -> Test Dates : {pd.to_datetime(test_dates[0]).strftime('%Y-%m-%d')} to {pd.to_datetime(test_dates[-1]).strftime('%Y-%m-%d')} ({len(self.df_test)} rows across {len(test_dates)} weeks, UNTOUCHED)")
+
+    def prepare_data(self):
+        """
+        Loads and splits data with purge window, returning dictionary of splits.
+        """
+        self.load_and_split_data()
+        return {
+            'X_train': self.X_train,
+            'y_train': self.y_train,
+            'X_val': self.X_val,
+            'y_val': self.y_val,
+            'X_test': self.X_test,
+            'y_test': self.y_test,
+            'X_train_scaled': self.X_train_scaled,
+            'X_val_scaled': self.X_val_scaled,
+            'X_test_scaled': self.X_test_scaled,
+        }
 
     def train_models(self):
         """
@@ -193,6 +228,15 @@ class ModelPipeline:
             except Exception:
                 roc_auc = np.nan
 
+            prec_per_class = precision_score(self.y_test, y_pred, average=None, zero_division=0)
+            rec_per_class = recall_score(self.y_test, y_pred, average=None, zero_division=0)
+            f1_per_class = f1_score(self.y_test, y_pred, average=None, zero_division=0)
+
+            # Class 1: Emerging Trend
+            em_prec = float(prec_per_class[1]) if len(prec_per_class) > 1 else 0.0
+            em_rec = float(rec_per_class[1]) if len(rec_per_class) > 1 else 0.0
+            em_f1 = float(f1_per_class[1]) if len(f1_per_class) > 1 else 0.0
+
             results.append({
                 'model': name,
                 'accuracy': round(acc, 4),
@@ -202,6 +246,9 @@ class ModelPipeline:
                 'precision_weighted': round(prec_weighted, 4),
                 'recall_weighted': round(rec_weighted, 4),
                 'f1_weighted': round(f1_weighted, 4),
+                'emerging_precision': round(em_prec, 4),
+                'emerging_recall': round(em_rec, 4),
+                'emerging_f1': round(em_f1, 4),
                 'roc_auc': round(roc_auc, 4) if not np.isnan(roc_auc) else "N/A"
             })
 
@@ -266,10 +313,26 @@ class ModelPipeline:
         plt.savefig(os.path.join(self.plots_dir, "model_comparison_chart.png"), dpi=200)
         plt.close()
 
+    def train_all_models(self, data_dict=None):
+        """
+        Trains all models and returns dictionary mapping name to (model, is_scaled).
+        """
+        self.train_models()
+        models_dict = {
+            'Logistic Regression': (self.models['Logistic Regression'], True),
+            'Random Forest': (self.models['Random Forest'], False),
+        }
+        if 'XGBoost' in self.models:
+            models_dict['XGBoost'] = (self.models['XGBoost'], False)
+        return models_dict
+
     def run(self):
         self.load_and_split_data()
         self.train_models()
         self.evaluate_all()
+
+# Alias for backwards compatibility with evaluation scripts
+ModelTrainer = ModelPipeline
 
 if __name__ == "__main__":
     pipeline = ModelPipeline()

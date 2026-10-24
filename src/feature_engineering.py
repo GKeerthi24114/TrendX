@@ -86,11 +86,12 @@ class FeatureEngineer:
             # 3. Absolute change (y_t - y_t-1)
             abs_change = curr - prev
 
-            # 4. Percentage change (((y_t - y_t-1) / y_t-1) * 100)
+            # 4. Percentage change (((y_t - y_t-1) / max(y_t-1, 1.0)) * 100)
             if prev == 0.0 and curr == 0.0:
                 pct_change = 0.0
             else:
-                pct_change = float(((curr - prev) / (prev + 1e-5)) * 100.0)
+                denom = max(prev, 1.0)
+                pct_change = float(((curr - prev) / denom) * 100.0)
 
             # Historical windows up to time t (No future observations used)
             w4 = vals[max(0, t - self.window_size_short + 1) : t + 1]

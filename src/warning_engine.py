@@ -35,7 +35,16 @@ class WarningEngine:
 
     LABEL_NAMES = ["Stable", "Emerging Trend", "Strong Trend"]
 
-    def __init__(self, model_dir=r"d:\DS PROJECT\models"):
+    def __init__(self, model_dir=None):
+        if model_dir is None:
+            base_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+            local_models = os.path.join(base_dir, "models")
+            if os.path.exists(local_models):
+                model_dir = local_models
+            elif os.path.exists(r"d:\DS PROJECT\models"):
+                model_dir = r"d:\DS PROJECT\models"
+            else:
+                model_dir = local_models
         self.model_dir = model_dir
         self.model = None
         self.scaler = None
@@ -58,7 +67,8 @@ class WarningEngine:
         """
         Loads saved model and scaler object.
         """
-        model_path = os.path.join(self.model_dir, f"{model_name}.joblib")
+        clean_name = model_name.lower().replace(' ', '_')
+        model_path = os.path.join(self.model_dir, f"{clean_name}.joblib")
         scaler_path = os.path.join(self.model_dir, "scaler.joblib")
 
         if os.path.exists(model_path):

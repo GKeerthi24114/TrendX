@@ -10,7 +10,7 @@ from sklearn.metrics import (
     roc_auc_score, confusion_matrix, classification_report
 )
 
-from src.train_models import ModelTrainer
+from src.train_models import ModelTrainer, ModelPipeline
 
 class ModelEvaluator:
     """
@@ -18,10 +18,11 @@ class ModelEvaluator:
     Generates performance comparison metrics, confusion matrices,
     and feature importance analysis.
     """
-    def __init__(self, models_dir="models", outputs_dir="outputs"):
-        self.models_dir = models_dir
-        self.outputs_dir = outputs_dir
-        os.makedirs(outputs_dir, exist_ok=True)
+    def __init__(self, models_dir=None, outputs_dir=None):
+        base_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+        self.models_dir = models_dir if models_dir is not None else os.path.join(base_dir, "models")
+        self.outputs_dir = outputs_dir if outputs_dir is not None else os.path.join(base_dir, "outputs")
+        os.makedirs(self.outputs_dir, exist_ok=True)
         self.target_names = ['Stable', 'Emerging Trend', 'Strong Trend']
 
     def evaluate_model(self, model, X_test, y_test, model_name):
@@ -38,6 +39,15 @@ class ModelEvaluator:
         rec_weighted = recall_score(y_test, y_pred, average='weighted', zero_division=0)
         f1_macro = f1_score(y_test, y_pred, average='macro', zero_division=0)
         f1_weighted = f1_score(y_test, y_pred, average='weighted', zero_division=0)
+
+        # Emerging trend (Class 1) specific metrics
+        prec_per_class = precision_score(y_test, y_pred, average=None, zero_division=0)
+        rec_per_class = recall_score(y_test, y_pred, average=None, zero_division=0)
+        f1_per_class = f1_score(y_test, y_pred, average=None, zero_division=0)
+
+        em_prec = float(prec_per_class[1]) if len(prec_per_class) > 1 else 0.0
+        em_rec = float(rec_per_class[1]) if len(rec_per_class) > 1 else 0.0
+        em_f1 = float(f1_per_class[1]) if len(f1_per_class) > 1 else 0.0
 
         roc_auc = None
         if y_prob is not None:
@@ -57,6 +67,9 @@ class ModelEvaluator:
             'Recall (Weighted)': rec_weighted,
             'F1-Score (Macro)': f1_macro,
             'F1-Score (Weighted)': f1_weighted,
+            'Emerging Precision': em_prec,
+            'Emerging Recall': em_rec,
+            'Emerging F1-Score': em_f1,
             'ROC-AUC (Macro OvR)': roc_auc
         }
 

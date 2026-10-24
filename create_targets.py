@@ -17,7 +17,8 @@ def main():
     print("RUNNING FUTURE-BASED TARGET CREATION & ML DATASET GENERATION PIPELINE")
     print("=" * 75)
 
-    output_dir = r"d:\DS PROJECT\outputs"
+    base_dir = os.path.dirname(os.path.abspath(__file__))
+    output_dir = os.path.join(base_dir, "outputs")
     plots_dir = os.path.join(output_dir, "plots", "target_analysis")
     os.makedirs(output_dir, exist_ok=True)
     os.makedirs(plots_dir, exist_ok=True)

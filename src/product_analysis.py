@@ -36,6 +36,8 @@ class ProductAnalyzer:
         (whether category, color, or fabric).
         """
         df = self.train_df if dataset == 'train' else self.test_df
+        if df.empty or not all(col in df.columns for col in ['category', 'color', 'fabric']):
+            return pd.DataFrame(columns=['category', 'color', 'fabric'])
 
         # Match against category, color, or fabric
         matched = df[

@@ -20,7 +20,8 @@ def run_pipeline():
     print("STARTING DATA PREPROCESSING & TREND FEATURE ENGINEERING PIPELINE")
     print("=" * 70)
 
-    output_dir = r"d:\DS PROJECT\outputs"
+    base_dir = os.path.dirname(os.path.abspath(__file__))
+    output_dir = os.path.join(base_dir, "outputs")
     plots_dir = os.path.join(output_dir, "plots")
     os.makedirs(output_dir, exist_ok=True)
     os.makedirs(plots_dir, exist_ok=True)

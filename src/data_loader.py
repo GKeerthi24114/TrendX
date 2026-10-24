@@ -12,7 +12,16 @@ class DataLoader:
     Data loader utility to read and structure Google Trends data,
     fashion product datasets, label maps, and normalization constants.
     """
-    def __init__(self, data_dir=r"d:\DS PROJECT\dataset"):
+    def __init__(self, data_dir=None):
+        if data_dir is None:
+            base_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+            local_dataset = os.path.join(base_dir, "dataset")
+            if os.path.exists(local_dataset):
+                data_dir = local_dataset
+            elif os.path.exists(r"d:\DS PROJECT\dataset"):
+                data_dir = r"d:\DS PROJECT\dataset"
+            else:
+                data_dir = local_dataset
         self.data_dir = data_dir
         self.gtrends_path = os.path.join(data_dir, "gtrends.csv")
         self.train_path = os.path.join(data_dir, "train.csv")
@@ -28,6 +37,8 @@ class DataLoader:
         Returns:
             pd.DataFrame: Time-series Google Trends dataframe.
         """
+        if not os.path.exists(self.gtrends_path):
+            return pd.DataFrame(columns=['date'])
         df = pd.read_csv(self.gtrends_path)
         if 'date' in df.columns:
             df['date'] = pd.to_datetime(df['date'])
@@ -40,8 +51,8 @@ class DataLoader:
         Returns:
             tuple: (train_df, test_df)
         """
-        train_df = pd.read_csv(self.train_path)
-        test_df = pd.read_csv(self.test_path)
+        train_df = pd.read_csv(self.train_path) if os.path.exists(self.train_path) else pd.DataFrame()
+        test_df = pd.read_csv(self.test_path) if os.path.exists(self.test_path) else pd.DataFrame()
         return train_df, test_df
 
     def load_labels(self):
